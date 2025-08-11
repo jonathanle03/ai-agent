@@ -3,7 +3,10 @@ import sys
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from functions.get_files_info import schema_get_files_info
+from functions.get_files_info import schema_get_files_info, get_files_info
+from functions.get_file_content import schema_get_file_content, get_file_content
+from functions.write_file import schema_write_file, write_file
+from functions.run_python import schema_run_python_file, run_python_file
 
 
 def main():
@@ -26,6 +29,9 @@ def main():
     available_functions = types.Tool(
         function_declarations=[
             schema_get_files_info,
+            schema_get_file_content,
+            schema_write_file,
+            schema_run_python_file,
         ]
     )
 
@@ -36,6 +42,9 @@ def main():
     When a user asks a question or makes a request, make a function call plan. You can perform the following operations:
 
     - List files and directories
+    - Read file contents
+    - Execute Python files with optional arguments
+    - Write or overwrite files
 
     All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
     """
@@ -62,14 +71,64 @@ def main():
         print("User prompt: " + prompt)
 
 
-    for function in response.function_calls:
-        print(f"Calling function: {function.name}({function.args})")
-    print(response.text)
+    try:
+        for function in response.function_calls:
+            result = call_function(function)
+
+            if "--verbose" in sys.argv:
+                print(f"-> {result.parts[0].function_response.response}")
+
+    except Exception as e:
+        print(f"Error calling function: {e}")
 
 
     if "--verbose" in sys.argv:
         print("Prompt tokens: " + str(prompt_tokens))
         print("Response tokens: " + str(response_tokens))
+
+
+def call_function(function_call, verbose=False):
+    if verbose:
+        print(f"Calling function: {function_call.name}({function_call.args})")
+    else:
+        print(f" - Calling function: {function_call.name}")
+
+
+    function_name = function_call.name
+    functions = {
+        "get_files_info": get_files_info,
+        "get_file_content": get_file_content,
+        "write_file": write_file,
+        "run_python_file": run_python_file,
+    }
+
+
+    if not function_name in functions.keys():
+        return types.Content(
+            role="tool",
+            parts=[
+                types.Part.from_function_response(
+                    name=function_name,
+                    response={"error": f"Unknown function: {function_name}"},
+                )
+            ],
+        )
+    
+
+    function_args = function_call.args.copy()
+    function_args["working_directory"] = "./calculator"
+    result = functions[function_name](**function_args)
+
+
+    return types.Content(
+        role="tool",
+        parts=[
+            types.Part.from_function_response(
+                name=function_name,
+                response={"result": result},
+            )
+        ],
+    )
 
 
 if __name__ == "__main__":
