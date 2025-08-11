@@ -47,44 +47,65 @@ def main():
     - Write or overwrite files
 
     All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
+    When the user talks about a calculator, they are referring to the files written within the working directory.
+    Do not explain the plan, rather use the function call plan to gain more information to actually answer their question.
     """
 
 
     messages = [
         types.Content(role="user", parts=[types.Part(text=prompt)])
     ]
-    response = client.models.generate_content(
-        model="gemini-2.0-flash-001",
-        contents=messages,
-        config=types.GenerateContentConfig(
-            tools=[available_functions],
-            system_instruction=system_prompt,
-        ),
-    )
+
+    counter = 0
+    while counter < 20:
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-001",
+                contents=messages,
+                config=types.GenerateContentConfig(
+                    tools=[available_functions],
+                    system_instruction=system_prompt,
+                ),
+            )
 
 
-    prompt_tokens = response.usage_metadata.prompt_token_count
-    response_tokens = response.usage_metadata.candidates_token_count
+            for candidate in response.candidates:
+                messages.append(candidate.content)
 
 
-    if "--verbose" in sys.argv:
-        print("User prompt: " + prompt)
+            prompt_tokens = response.usage_metadata.prompt_token_count
+            response_tokens = response.usage_metadata.candidates_token_count
 
-
-    try:
-        for function in response.function_calls:
-            result = call_function(function)
 
             if "--verbose" in sys.argv:
-                print(f"-> {result.parts[0].function_response.response}")
+                print("User prompt: " + prompt)
 
-    except Exception as e:
-        print(f"Error calling function: {e}")
+            try:
+                for function in response.function_calls:
+                    result = call_function(function)
+                    messages.append(types.Content(role="tool", parts=[result.parts[0].function_response.response["result"]]))
+
+                    if "--verbose" in sys.argv:
+                        print(f"-> {result.parts[0].function_response.response}")
+
+            except Exception as e:
+                print(f"Error calling function {function.name}({function.args}): {e}")
+            
+            
+            if response.text:
+                print(response.text)
+                break
 
 
-    if "--verbose" in sys.argv:
-        print("Prompt tokens: " + str(prompt_tokens))
-        print("Response tokens: " + str(response_tokens))
+            if "--verbose" in sys.argv:
+                print("Prompt tokens: " + str(prompt_tokens))
+                print("Response tokens: " + str(response_tokens))
+            
+
+            counter += 1
+        
+        except Exception as e:
+            print(f"Error: {e}")
 
 
 def call_function(function_call, verbose=False):
