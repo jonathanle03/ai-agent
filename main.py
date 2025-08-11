@@ -49,6 +49,7 @@ def main():
     All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
     When the user talks about a calculator, they are referring to the files written within the working directory.
     Do not explain the plan, rather use the function call plan to gain more information to actually answer their question.
+    Use get_files_info to look inside directories to find specific files.
     """
 
 
@@ -80,13 +81,17 @@ def main():
             if "--verbose" in sys.argv:
                 print("User prompt: " + prompt)
 
+
             try:
+                function_parts = []
                 for function in response.function_calls:
-                    result = call_function(function)
-                    messages.append(types.Content(role="tool", parts=[result.parts[0].function_response.response["result"]]))
+                    result = call_function(function, verbose=("--verbose" in sys.argv))
+                    function_parts.append(result.parts[0].function_response.response)
 
                     if "--verbose" in sys.argv:
-                        print(f"-> {result.parts[0].function_response.response}")
+                        print(f"-> {result.parts[0].function_response}")
+                
+                messages.append(types.Content(role="tool", parts=function_parts))
 
             except Exception as e:
                 print(f"Error calling function {function.name}({function.args}): {e}")
