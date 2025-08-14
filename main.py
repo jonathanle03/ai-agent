@@ -57,9 +57,14 @@ def main():
         types.Content(role="user", parts=[types.Part(text=prompt)])
     ]
 
+
+    if "--verbose" in sys.argv:
+        print("User prompt: " + prompt)
+
+
     counter = 0
     while counter < 20:
-        try:
+        try:    
             response = client.models.generate_content(
                 model="gemini-2.0-flash-001",
                 contents=messages,
@@ -78,20 +83,21 @@ def main():
             response_tokens = response.usage_metadata.candidates_token_count
 
 
-            if "--verbose" in sys.argv:
-                print("User prompt: " + prompt)
-
-
             try:
                 function_parts = []
-                for function in response.function_calls:
-                    result = call_function(function, verbose=("--verbose" in sys.argv))
-                    function_parts.append(result.parts[0].function_response.response)
+                if response.function_calls:
+                    for function in response.function_calls:
+                        result = call_function(function, verbose=("--verbose" in sys.argv))
 
-                    if "--verbose" in sys.argv:
-                        print(f"-> {result.parts[0].function_response}")
-                
-                messages.append(types.Content(role="tool", parts=function_parts))
+                        if not result.parts or not result.parts[0].function_response:
+                            raise Exception("empty function result")
+                        
+                        function_parts.append(result.parts[0])
+
+                        if "--verbose" in sys.argv:
+                            print(f"-> {result.parts[0].function_response}")
+                    
+                    messages.append(types.Content(role="tool", parts=function_parts))
 
             except Exception as e:
                 print(f"Error calling function {function.name}({function.args}): {e}")
